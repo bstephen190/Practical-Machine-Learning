@@ -1,0 +1,100 @@
+---
+title: "Practical Machine Learning Week 4"
+author: "Brittany"
+date: "2/6/2019"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har
+
+## Setup
+
+```{r}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(RColorBrewer)
+library(rattle)
+library(randomForest)
+library(knitr)
+library(e1071)
+set.seed(123)
+
+testing<-read.csv("~/Desktop/pml-testing.csv")
+original<-read.csv("~/Desktop/pml-training.csv")
+```
+## Methodology
+We are trying to predict the method of exercise for each participant. We will use three different models: Decision Tree, Random Forest, and Gradient Boosting. We will also use cross-validiation with 5 folds for slightly more accuracy. First, prep the data.
+## Prepping the Data
+```{r}
+# clean the data
+# str(original)
+removing <- which(colSums(is.na(original) | original=="") > 0.95*dim(original)[1])
+original <- original[,-removing]
+original <- original[,-c(1:7)]
+testing <- testing[,-removing]
+testing <- testing[,-c(1:7)]
+
+# split into 70% training and 30% validation
+set.seed(123)
+original$split <- runif(19622,min=0,max=1)
+training<-original [which(original$split <= 0.70),]
+validation<-original [which(original$split > 0.70),]
+training <- training[,-54]
+validation <- validation[,-54]
+```
+
+# Decision Tree
+Now, the first model, Decision Tree. This gets us an accuracy of 49.2% with 5 folds. Not great.
+```{r}
+cv <- trainControl(method="cv",number=5)
+model1 <- train(classe ~ .,data=training, method="rpart",trControl=cv)
+fancyRpartPlot(model1$finalModel, cex=0.3)
+
+# Confusion Matrix
+predict1 <- predict(model1, validation, type="raw")
+conftree1 <- confusionMatrix(predict1, validation$classe)
+conftree1
+conftree1$overall[1]
+```
+
+## Random Forests
+Random Forest gets us to an accuracy of 99.5%. The number of parameters that gives the highest accuracy is 2, but you could also use 27 predictors, after which there is a sharp dropoff. There is not a huge difference in accuracy with predictors <= 27. The cutoff for the number of trees that produces a significantly lower error is about <= 25. 
+
+```{r}
+model2 <- train(classe ~ ., data=training,method="rf",trControl=cv)
+plot(model2,main="Random Forest Accuracy by Number of Predictors")
+print(model2)
+
+predict2 <- predict(model2, validation)
+conftree2 <- confusionMatrix(predict2, validation$classe)
+conftree2
+conftree2$overall[1]
+
+plot(model2)
+plot(model2$finalModel,main="Random Forest Model Error by Number of Trees")
+```
+
+## Gradient Boosting
+Finally, we will try gradient boosting. This gives us an accuracy of 96.6% with 5 folds. Although this is high, Random Forest seems to provide us the best model for predicting exercise type. 
+```{r}
+model3 <- train(classe ~ ., data=training, method="gbm",trControl=cv,verbose=FALSE)
+plot(model3)
+
+predict3 <- predict(model3, validation)
+conftree3 <- confusionMatrix(predict3, validation$classe)
+conftree3
+conftree3$overall[1]
+```
+
+## Conclusion
+Random Forest is the best model.
+```{r}
+finalpred <- predict(model2, testing)
+finalpred
+```
